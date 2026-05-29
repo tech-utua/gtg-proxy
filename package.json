@@ -1,0 +1,14 @@
+{
+  "name": "gtg-proxy",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Cloudflare Worker proxy reverso first-party para Google Tag Gateway",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

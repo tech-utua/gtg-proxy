@@ -1,0 +1,13 @@
+name = "gtg-proxy"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+# Substitua pelo account_id da sua conta Cloudflare antes de deployar.
+# `wrangler whoami` mostra o account_id ativo.
+# account_id = "REPLACE_WITH_YOUR_ACCOUNT_ID"
+
+# Routes — uma entrada por (domínio, zona).
+# A zona precisa estar no mesmo account_id; o pattern precisa cobrir /_ev/*.
+# [[routes]]
+# pattern = "exemplo.com/_ev/*"
+# zone_name = "exemplo.com"
