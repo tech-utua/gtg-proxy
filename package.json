@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": false,
   "description": "Cloudflare Worker proxy reverso first-party para Google Tag Gateway",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
