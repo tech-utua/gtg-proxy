@@ -80,4 +80,4 @@ A validação operacional descrita acima é o critério de aceite.
 
 ## Licença
 
-[MIT](LICENSE)
+[PolyForm Noncommercial License 1.0.0](LICENSE) — uso noncommercial é livre (pessoal, hobby, pesquisa, instituição educacional, organização sem fins lucrativos, governo). Uso comercial requer licença separada — entre em contato com tech@utua.com.br.
