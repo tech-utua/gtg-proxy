@@ -1,3 +1,5 @@
+<!-- gerado por utua-docs · réplica read-only · não edite aqui -->
+
 # 🔒 Documentação gerada — não edite aqui
 
 Estes arquivos são uma **réplica read-only** sincronizada a partir do repositório central

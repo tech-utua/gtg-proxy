@@ -1,0 +1,5 @@
+# Arquivos gerados pelo sync do utua-docs. Reescrito a cada run.
+# Serve para o sync saber o que pode remover sem tocar na documentação própria
+# deste repositório (o marcador nos .md não alcança binário). Não edite.
+README.md
+ai-ready-codebase.md

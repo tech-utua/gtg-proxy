@@ -12,6 +12,8 @@ audience: "Engenharia"
 nav_title: "Codebase AI-Ready"
 ---
 
+<!-- gerado por utua-docs · réplica read-only · não edite aqui -->
+
 # Guia de Codebase AI-Ready — UTUA
 
 :::atencao Esta pagina e a fonte unica
