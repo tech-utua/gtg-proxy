@@ -67,6 +67,9 @@ Confirme três coisas para o país que vai replicar. Todas já causaram retrabal
 3. **Se o país já tem tag do TikTok no container.** Vários já têm — e nesses casos o trabalho é
    *corrigir* a tag existente, não criar outra.
 
+O passo 4 depende do **time de dev** (acesso à Cloudflare). Abra o pedido cedo para não esperar
+por ele no fim — os demais passos seguem em paralelo.
+
 ## Passo a passo
 
 ### 1. Adicione o país às três Lookup Tables
@@ -105,7 +108,15 @@ antiga antes de escrever o seu.
 `Identify`, `Purchase` e `Events API` — o código de cada uma está mais abaixo. As três usam o
 **mesmo gatilho** do passo 2 e disparam na mesma exibição de página.
 
-### 4. Acrescente o pixel e o token ao Worker
+### 4. Peça ao time de dev para cadastrar o token no Worker
+
+:::atencao Este passo não é da operação
+Ele exige acesso ao painel da Cloudflare, que a operação não tem. **Abra um pedido para o time
+de dev** — é uma tarefa de poucos minutos do lado deles.
+
+**O que a operação faz:** gera o access token no Events Manager do TikTok (isso sim é no painel
+que vocês acessam) e informa ao dev **qual pixel** e **de qual conta** ele pertence.
+:::
 
 A via server-side usa um Worker que guarda os tokens. Ele tem **um único segredo**,
 `TIKTOK_TOKENS`, que é um JSON de pixel para token:
@@ -121,10 +132,18 @@ Replicar um país é **acrescentar uma chave nesse JSON** — sem deploy de cód
 anúncio tem seu próprio par pixel/token, e o Worker escolhe o token pelo pixel que chega na
 requisição.
 
-:::perigo Access token não circula por Slack nem entra em arquivo
-O token vai direto no segredo do Worker, por quem tem acesso ao painel da Cloudflare. Ele nunca
-toca o navegador — é justamente por isso que a chamada passa pelo Worker em vez de ir do
-navegador direto ao TikTok.
+:::perigo O access token não vai por Slack, e-mail nem planilha
+É uma credencial: quem a tiver consegue mandar eventos como se fosse a conta. Combine com o dev
+um canal seguro para entregá-la — gerenciador de senhas, por exemplo. E ela nunca toca o
+navegador: é justamente por isso que a chamada passa pelo Worker em vez de ir do navegador
+direto ao TikTok.
+:::
+
+:::atencao Este passo não bloqueia os outros
+Enquanto o token não estiver cadastrado, as tags de `Identify` e `Purchase` funcionam normal e
+os quatro indicadores da auditoria já sobem — só a **redundância** da Events API fica pendente.
+A tag da Events API pode ficar publicada: ela ignora a falha da chamada em silêncio, sem afetar
+o evento que o pixel manda. Siga para o passo 5 sem esperar.
 :::
 
 ### 5. Remova as regras do Events Builder desse pixel
