@@ -85,6 +85,113 @@ Você não precisa invocar à mão: o Claude também aciona sozinho quando a
 conversa bate com a descrição da skill. O `@`-mention dos agents segue o mesmo
 padrão (`@utua-tech:code-review-agent`).
 
+## Exemplos de uso
+
+Casos reais do dia a dia. Você não precisa decorar comando: em quase todos, basta
+descrever a situação e o Claude aciona a skill certa sozinho.
+
+### Revisar antes de abrir o PR
+
+```
+revisa o que eu mudei nessa branch antes de eu abrir o PR
+```
+
+O `code-review-agent` olha **só o diff**, nunca a base inteira, em cinco frentes:
+código morto, inconsistências, style comparado ao resto do repositório, bugs
+lógicos e segurança. Devolve os achados por severidade e registra os padrões no
+`lessons.md` do projeto — então a revisão de hoje deixa o repositório mais
+inteligente amanhã.
+
+### Limpar um board que acumulou
+
+```
+/utua-tech:triage
+```
+
+Busca as issues em *To Do* e *In Review*, apresenta em pares por prioridade, você
+decide, e ela aplica em batch com comentário de contexto (commits, PRs). Uma
+sessão manual de meia hora no Jira vira cerca de cinco minutos.
+
+### Fechar o ciclo depois do merge
+
+```
+o PR #45 foi mergeado, roda o release
+```
+
+Cria a tag semver, atualiza o Jira para Done e anuncia no Slack — **sem parar
+para pedir confirmação entre as etapas**. É o fluxo que costuma ficar pela
+metade quando é feito à mão.
+
+### Descobrir o quanto um repositório está AI-Ready
+
+```
+/utua-tech:ai-ready-check
+```
+
+Roda dentro do repositório e devolve o quadro de aderência por seção com
+evidência `arquivo:linha`, os três passos mais baratos e um plano incremental.
+Não altera nada — só diagnostica.
+
+É o mesmo diagnóstico que antes exigia salvar o guia dentro do repositório e
+colar um prompt de vinte linhas à mão.
+
+### Parar no meio e retomar depois
+
+```
+/utua-tech:handoff
+```
+
+Gera o resumo do estado atual mais um prompt pronto para colar na próxima
+sessão. Útil no fim do dia, antes de trocar de contexto, ou quando a janela está
+ficando pesada.
+
+### Instrumentar um evento sem inventar nome
+
+```
+preciso disparar o evento de quiz completo com as properties certas
+```
+
+O `conversion-analytics-guide` responde a partir do catálogo oficial de eventos e
+da API do SDK — nome exato, properties obrigatórias, contrato do collector. Ele é
+instruído a **nunca inventar** evento, property ou método.
+
+### Transformar demanda de área de negócio em issue
+
+```
+chegou essa planilha de demandas do time de aquisição, transforma em issues
+```
+
+O `scrum-master-agent` lê a planilha, escreve as histórias com critério de aceite
+e cria no board certo. Ele pode criar issue, épico e sprint, e mover tarefa entre
+sprints. **Nunca** deleta, arquiva, troca assignee ou fecha sprint antes do prazo
+sem aprovação explícita.
+
+### Anúncio que não renderiza
+
+```
+o mob_top não está renderizando no utua.africa, me ajuda a debugar
+```
+
+O `gpt-adtech` ataca por hipótese ranqueada: definição do slot, ordem do
+`cmd.push`, consent e CMP, lazy load, viewability. É a skill para qualquer coisa
+de GPT/GAM, header bidding ou CLS causado por anúncio.
+
+### Auditar um bloco do Ad Inserter
+
+```
+audita o bloco 4 do utua.jobs e me diz se a url_list está correta
+```
+
+O `ad-inserter-pro-expert` conhece as opções do plugin a fundo — posição de
+inserção, targeting por device, scheduling e, principalmente, a pegadinha de
+`url_list_type` vazio significar **denylist**, que já causou bloco rodando onde
+não devia.
+
+:::atencao As duas últimas exigem o `utua-adtech`
+Elas não vêm no `utua-tech`. Instale `utua-adtech@utua-tech` se o seu trabalho
+encosta em anúncio.
+:::
+
 ## Atualizar e remover
 
 ```
