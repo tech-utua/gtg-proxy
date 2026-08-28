@@ -97,15 +97,7 @@ Os plugins **não têm número de versão fixo**: a versão é o commit da `main
 `utua-workspace`. Na prática, todo merge chega para quem atualizar — ninguém
 precisa lembrar de incrementar nada.
 
-## O que **não** vem nos plugins
-
-| O que | Onde está | Por quê |
-|---|---|---|
-| `quiz-status`, `quiz-tech-lead` | `.claude/` do `utua-workspace` | Assunto específico demais para o pacote geral. Se o quiz justificar, viram um `utua-quiz` próprio |
-| `bitbucket-admin-agent` | `.claude/agents/` do `utua-workspace` | Custava ~780 tokens por sessão — 45% do pacote — para administrar uma plataforma que virou legado |
-| `dossie-feedback`, `acompanhamento-1-1`, `audit-team` | Fora de qualquer distribuição | Material de gestão. `tech-utua` é a org do time inteiro: qualquer pessoa com acesso leria dossiê e 1:1 |
-| Skills `bmad-*` | `npx bmad-method install` | Pacote de terceiro, reinstalável |
-| Skills da Cloudflare (`wrangler`, `durable-objects`…) | Marketplace oficial | Publicadas pela própria Cloudflare |
+## Cursor, Codex e Copilot
 
 :::atencao Se você usa Cursor, Codex ou Copilot
 Plugin é um mecanismo do Claude Code — não alcança nenhuma dessas ferramentas.
