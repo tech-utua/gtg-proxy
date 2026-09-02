@@ -347,17 +347,18 @@ function () {
 }
 ```
 
-:::perigo A lista de verticais é fechada — vertical nova não dispara
+:::perigo A lista de verticais é fechada — vertical fora dela não dispara
 O padrão reconhecido é `/<país>-<vertical>-<oferta>-p1/`, e a vertical só casa se for `emp` ou
 `cc`. Qualquer outra devolve vazio, a tabela não resolve e **a tag não dispara** — sem erro
-nenhum, exatamente como no caso das `/ph-cc-*`.
+nenhum, exatamente como aconteceu com as `/ph-cc-*`.
 
-Isso já está acontecendo: as Filipinas têm **três páginas `/ph-finance-*`** no ar
-(`digital-payments`, `mga-pandaraya-sa-pananalapi`, `pag-ibig`) que ficam fora da medição. Se
-essas páginas receberem mídia paga, a conversão não é registrada.
+Isso é intencional: define o **escopo** do que este fluxo mede. As Filipinas, por exemplo, têm
+três páginas `/ph-finance-*` no ar que ficam de fora por decisão — elas não entram neste fluxo.
 
-Ao replicar, **liste as verticais do país** antes de assumir que `emp|cc` cobre tudo — e
-acrescente as que faltarem à alternância `(emp|cc)` do código acima.
+O risco é a lista virar escopo por acidente em vez de por escolha. Ao replicar, **liste as
+verticais do país** e decida quais entram, em vez de assumir que `emp|cc` cobre tudo. Para
+incluir uma vertical, acrescente-a à alternância `(emp|cc)` do código acima — e só então ela
+pode receber mídia paga com a conversão sendo registrada.
 :::
 
 :::atencao Domínios de país único ficam de fora até alguém agir
