@@ -8,7 +8,7 @@ audience: Operação
 summary: A auditoria do TikTok apontou quatro indicadores em 0% porque a conversão não passava por tag nossa. Esta página ensina o que o piloto das Filipinas fez para resolver e como repetir isso em outro país.
 owner: tech-utua
 status: stable
-updated: 2026-08-20
+updated: 2026-09-01
 publish: true
 ---
 
@@ -563,6 +563,101 @@ e TR **sem criar tag nenhuma**. É o caminho mais curto até as contas que a aud
 O mapeamento de conta para container acima veio do **nome da conta**, não de medição. Confirme no
 painel antes de começar por `uk.cc` ou `jp.cc`.
 :::
+
+## Pendências
+
+Duas questões levantadas ao fechar a primeira fase com PH rodando. Nenhuma delas invalida o que
+está no ar. A primeira já tem desenho decidido e espera o momento de aplicar; a segunda ainda
+precisa de diagnóstico confirmado.
+
+### 1. Um país com mais de um pixel — desenho decidido, ainda não aplicado
+
+A conta de anúncios costuma ser por **vertical**: um pixel para cartão (`cc`) e outro para
+empréstimo (`emp`). O desenho atual não expressa isso — `TT - Pixel Code Map` é indexada só pelo
+país, e a tag de código-base carrega um pixel com o ID escrito literalmente nela.
+
+Não é hipotético: no container, `br`, `usa`, `ar`, `co` e `ca` já aparecem com dois ou três
+pixels cada, e existem **26 tags de código-base para 26 pixels**.
+
+:::perigo Nos países multi-pixel, hoje os dois pixels carregam em toda página
+As duas tags de código-base de `br` compartilham o **mesmo acionador** (`p1/` + `/br-` +
+`tiktok`), e o mesmo vale para `usa`. Como o acionador olha só o país, ele não separa vertical:
+cada pixel recebe `Pageview` de cartão **e** de empréstimo.
+
+Se a intenção é um pixel por vertical, as duas contas estão medindo tráfego da outra. Isso é
+anterior a este trabalho e não afeta PH — que tem um pixel só —, mas **precisa ser corrigido
+antes de replicar para esses países**, ou o problema vira o normal.
+:::
+
+**A solução são duas metades, cada uma no seu mecanismo:**
+
+| Peça | Mecanismo | Resolve |
+|---|---|---|
+| Tag de código-base | **acionador por path** | qual pixel **carrega** na página |
+| `Identify`, `Purchase`, `Events API` | **Lookup chaveada por `país-vertical`** | para qual pixel o evento **vai** |
+
+O acionador por path aproveita que a URL sempre segue `/<país>-<vertical>-<produto>-<tipo>`:
+um acionador `contém /ph-emp-` para a tag do pixel de emprestimo, outro `contém /ph-cc-` para a
+de cartão. É o padrão que o container já usa — hoje o acionador só para no país, e passa a ir
+até a vertical.
+
+A segunda metade é barata: a variável de país **já captura** a vertical na regex
+`/^\/([a-z]{2,3})-(emp|cc)-/` e descarta o grupo 2. Devolvendo `país-vertical` (`ph-emp`), a
+Lookup do pixel passa a resolver por vertical. Sem isso, o pixel certo carregaria mas o
+`Purchase` continuaria indo para o único pixel que a tabela devolve para aquele país.
+
+:::atencao Use o hífen final no acionador
+`contém /ph-emp-`, não `/ph-emp`. Sem o hífen, uma vertical futura como `empresas` casaria os
+dois acionadores e carregaria dois pixels na mesma página. É a mesma classe do erro que deixou
+as `/ph-cc-` de fora.
+:::
+
+Foi descartado colapsar as 26 tags de base numa só que lesse a Lookup. Daria (a tag é Custom
+HTML, aceita variável), mas mexeria em 20 países de uma vez para economizar tags — enquanto
+dividir acionador é edição de gatilho, sem tocar em código que já funciona.
+
+**Por que ainda não foi aplicado:** PH tem um pixel só, servindo as duas verticais, então o
+problema não aparece aqui. A mudança entra quando o primeiro país multi-pixel — ou uma vertical
+nova — entrar no fluxo.
+
+Fica em aberto se `value` e `currency` devem passar a variar por vertical. Cartão e empréstimo
+não têm o mesmo RPM, então o `0.8` único provavelmente não serve para os dois — mas isso é
+calibração de negócio, não limitação técnica.
+
+### 2. Cobertura de cookie first-party: 43% no servidor, 98% no browser
+
+O painel do TikTok reporta, nas chaves de deduplicação:
+
+| Chave | Browser | Servidor |
+|---|---|---|
+| `event_id` | 100% | 100% |
+| Cookies first-party | 98% | **43%** |
+
+:::atencao Isto não é contagem dobrada
+`event_id` em 100% dos dois lados significa que a **deduplicação está funcionando** — nenhuma
+conversão está sendo contada duas vezes. O que a lacuna de cookie custa é **qualidade de match e
+atribuição** na via server-side, não a correção do número.
+:::
+
+**Suspeita principal, com evidência:** das três tags do gatilho, a da Events API é a **única sem
+Tag Sequencing**. `Purchase` e `Identify` esperam o código-base; a da Events API não espera nada.
+Ou seja, ela é a que lê o cookie `_ttp` mais cedo — e `_ttp` é escrito pelo SDK do TikTok durante
+a inicialização dele. Ler antes disso devolve vazio.
+
+Some-se um segundo efeito: a tag captura o valor por `{{TT - TTP Cookie}}`, e a substituição do
+GTM é **textual, no momento em que a tag é avaliada**. O valor fica congelado ali, mesmo que o
+`fetch` só saia depois — então esperar não adianta se a leitura já aconteceu.
+
+Correções, da mais barata para a mais cara:
+
+1. **Ligar Tag Sequencing** na tag da Events API, igual às outras duas. É uma caixa de seleção.
+2. **Ler o `_ttp` de `document.cookie` dentro da própria tag**, no momento do envio, em vez de
+   receber o valor pronto pela variável do GTM. Resolve o congelamento.
+3. Se ainda ficar curto, adiar o envio — com cuidado: atrasar demais arrisca perder o evento na
+   saída da página, que é justamente o que o `keepalive` existe para evitar.
+
+Depois de aplicar, **medir de novo no painel** antes de concluir. A hipótese acima explica o
+formato do número, mas não foi confirmada por medição.
 
 ## Referências
 
