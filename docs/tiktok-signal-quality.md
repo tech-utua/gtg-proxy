@@ -8,7 +8,7 @@ audience: Operação
 summary: A auditoria do TikTok apontou quatro indicadores em 0% porque a conversão não passava por tag nossa. Esta página ensina o que o piloto das Filipinas fez para resolver e como repetir isso em outro país.
 owner: tech-utua
 status: stable
-updated: 2026-09-01
+updated: 2026-09-02
 publish: true
 ---
 
@@ -41,19 +41,56 @@ página e enxerga o e-mail que o quiz gravou. É essa troca que esta página des
 
 ## O modelo que o piloto entregou
 
-Depois do corte, cada página de conversão das Filipinas dispara exatamente isto:
+São três eventos de conversão, cada um saindo por **duas vias** — pixel e Events API — mais o
+`Pageview` do código-base:
 
-| Evento | Quem dispara | O que carrega |
+| Evento | Quando dispara | Vias |
 |---|---|---|
-| `Pageview` | o código-base do pixel | identidade, via tag de identify |
-| `Purchase` | tag do GTM, pelo pixel | e-mail hasheado + valor + moeda + `event_id` |
-| `Purchase` | tag do GTM, pela Events API | os mesmos campos + `ttclid`, `ttp` e IP/User-Agent reais |
+| `Pageview` | toda página da campanha | código-base (identidade vem da tag de identify) |
+| `ViewContent` | **toda `p1`**, com ou sem `lead=true` | pixel + Events API |
+| `CompleteRegistration` | no envio do lead (`lead=true`) | pixel + Events API |
+| `Purchase` | no envio do lead (`lead=true`) | pixel + Events API |
 
-Os dois `Purchase` **não** viram duas conversões: carregam o mesmo `event_id`, e o TikTok
-deduplica por `(evento, event_id)`. É essa redundância que atende ao quinto item da auditoria —
-se o navegador falhar, bloquear anúncio ou perder a rede, a via server-side ainda entrega.
+Do lado do pixel é uma tag por evento; do lado da Events API é **uma tag só**, que lê a URL e
+manda os eventos daquela pageview.
 
-**Nenhuma regra sobrou no Events Builder do pixel.** É intencional, e o passo 5 explica.
+Cada par pixel + Events API **não** vira duas conversões: os dois carregam o mesmo `event_id`, e o
+TikTok deduplica pela combinação `(evento, event_id)` — vale o primeiro que chegar
+([doc](https://ads.tiktok.com/help/article/event-deduplication?lang=en)). É essa redundância que
+atende ao quinto item da auditoria: se o navegador falhar, bloquear anúncio ou perder a rede, a via
+server-side entrega.
+
+:::atencao Os três eventos da mesma pageview compartilham um `event_id`
+Isso é correto, e é o que a variável `TT - Event ID` garante ao guardar o valor em `window`. Como a
+chave de deduplicação é a **combinação** `(evento, event_id)`, `ViewContent` e `Purchase` com o
+mesmo ID não colidem — são chaves diferentes. O que precisa casar é o par **entre as duas vias**
+do mesmo evento, e um ID por tag quebraria justamente isso.
+:::
+
+:::perigo O nome do evento tem de bater exatamente entre as duas vias
+Se a tag de pixel manda `CompleteRegistration` e a da Events API manda `Complete Registration` ou
+`CompleteRegistrations`, o par **não casa** e a mesma conversão conta **duas vezes**. Um erro de
+digitação aqui não gera erro visível — gera número inflado.
+:::
+
+:::atencao O `ViewContent` da landing sai sem e-mail
+Quem acabou de cair na página ainda não deu o e-mail, então `User Email SHA256` vem vazia e o
+evento vai sem PII. É o comportamento correto — melhor campo ausente que valor lixo.
+
+Efeito colateral a não confundir com regressão: entrou no funil um evento de alto volume e sem PII.
+Se o painel agregar cobertura de PII entre eventos, **o número pode cair** sem nada ter quebrado.
+Leia a cobertura **por evento** antes de concluir que regrediu.
+:::
+
+:::atencao `CompleteRegistration` e `Purchase` disparam na mesma condição
+Os dois saem do mesmo gatilho (`lead=true`), então têm volume idêntico: descrevem o mesmo ato com
+nomes diferentes. Isso é deliberado — dá ao algoritmo um evento alternativo para otimizar —, mas
+significa que **otimizar pelos dois ao mesmo tempo é otimizar duas vezes pelo mesmo sinal**.
+Escolha um por campanha.
+:::
+
+**Nenhuma regra sobrou no Events Builder do pixel.** É intencional, e o passo 5 explica: os três
+eventos vêm de tags do GTM, e regra no painel voltaria a duplicar.
 
 ## Antes de começar
 
@@ -92,7 +129,7 @@ converte para a moeda da conta ao reportar. A variável existe justamente para p
 isso depois sem mexer em tag.
 :::
 
-### 2. Crie o gatilho cobrindo as páginas do país
+### 2. Crie os dois gatilhos do país
 
 :::perigo O gatilho tem que cobrir o mesmo alcance da regra que você vai remover
 No piloto o gatilho nasceu exigindo a vertical (`/ph-emp-`), enquanto a regra removida casava só
@@ -103,10 +140,53 @@ O gatilho correto do piloto ficou `Page Path` **contém** `/ph-`. Confira o alca
 antiga antes de escrever o seu.
 :::
 
-### 3. Clone as três tags do piloto
+São **dois** gatilhos, nenhum deles com exceção:
 
-`Identify`, `Purchase` e `Events API` — o código de cada uma está mais abaixo. As três usam o
-**mesmo gatilho** do passo 2 e disparam na mesma exibição de página.
+| Gatilho | Condições | Quem usa |
+|---|---|---|
+| **lead** | `/<país>-` + `-p1` + `lead=true` + `utm_source=tiktok` | `Identify`, `CompleteRegistration`, `Purchase` |
+| **p1** | `/<país>-` + `-p1` + `utm_source=tiktok` | `ViewContent` (pixel), `Events API` |
+
+O gatilho **p1** não filtra `lead=true`, então casa a landing **e** a página de conversão. É o que
+faz o `ViewContent` marcar as duas — e é por isso que a tag da Events API também manda `ViewContent`
+nas duas: as duas vias precisam enviar o mesmo conjunto, senão o evento fica sem par server-side.
+
+:::atencao O **p1** tem de ser o **lead** menos a condição `lead=true` — nada além disso
+Escreva os dois com exatamente os mesmos filtros de path, mudando só a presença do `lead=true`.
+Assim o **p1** é, por construção, superconjunto do **lead**.
+
+Se os filtros divergirem — um usando `-p1` e o outro `p1/`, por exemplo — abre-se a borda em que a
+página de conversão casa o **lead** mas não o **p1**. O `ViewContent` sumiria exatamente onde a
+conversão acontece, e o `Purchase` do server-side junto, já que os dois dependem do **p1**.
+:::
+
+### 3. Clone as cinco tags do piloto
+
+| Tag | Gatilho | O que é |
+|---|---|---|
+| `Identify` | lead | anexa a identidade ao pixel |
+| `ViewContent` (pixel) | **p1** | evento de topo, com `content_id` |
+| `CompleteRegistration` (pixel) | lead | evento de meio |
+| `Purchase` (pixel) | lead | conversão |
+| `Events API` | **p1** | cópia server-side dos **três** eventos |
+
+O código de cada uma está mais abaixo. Três tags do lado do pixel porque o template oficial manda
+um evento por tag; uma só do lado da Events API, que é código nosso e decide sozinha.
+
+:::atencao O `content_id` do `ViewContent` no template do pixel
+Ele não aparece por padrão. Em *Manually Input Single / Multiple Products*, escolha
+**Single Content** — aí os campos abaixo ficam disponíveis:
+
+| Campo | Valor |
+|---|---|
+| Content ID | `{{TT - Content ID}}` |
+| Content Type | `product` |
+
+O TikTok **exige `content_type` junto com `content_id`**, e só aceita `product` ou
+`product_group` ([doc](https://ads.tiktok.com/help/article/about-parameters?lang=en)). A landing é
+um item único, então `product`. Os dois campos precisam existir também na tag da Events API — se
+uma via mandar e a outra não, as propriedades divergem entre browser e servidor.
+:::
 
 ### 4. Peça ao time de dev para cadastrar o token no Worker
 
@@ -415,6 +495,37 @@ function () {
 }
 ```
 
+### `TT - Content ID` (Custom JavaScript)
+
+Devolve o slug da página, que é o identificador do conteúdo:
+`/ph-emp-bdo-personal-loan-p1/` → `ph-emp-bdo-personal-loan-p1`.
+
+```js
+function () {
+  try {
+    var parts = location.pathname.split('/');
+    var slug = '';
+    for (var i = parts.length - 1; i >= 0; i--) {
+      if (parts[i]) {
+        slug = parts[i].toLowerCase();
+        break;
+      }
+    }
+    return /^[a-z0-9-]{3,120}$/.test(slug) ? slug : undefined;
+  } catch (e) {
+    return undefined;
+  }
+}
+```
+
+Pega o **último** segmento não vazio do path, não o primeiro, para continuar funcionando se a
+landing algum dia ficar sob um prefixo. E normaliza para minúsculas: `/PH-EMP-X-p1/` e
+`/ph-emp-x-p1/` precisam virar o **mesmo** `content_id`, senão o TikTok trata como duas ofertas.
+
+O slug inclui o sufixo `-p1` de propósito — é o identificador daquela página. Se um dia for
+preciso agrupar `p1` e `p2` da mesma oferta num `content_id` só, o ajuste é remover o sufixo aqui,
+e isso muda o agrupamento no relatório.
+
 ### Tag de identify (Custom HTML)
 
 Anexa a identidade ao pixel. Precisa disparar **depois** do código-base, via **Advanced Settings
@@ -452,14 +563,58 @@ Duas consequências:
 E vale dentro de comentário também: nunca escreva chave dupla num comentário explicativo.
 :::
 
-### Tag da Events API (Custom HTML)
+### Tag da Events API (Custom HTML) — uma só, para os três eventos
 
 Manda a cópia server-side. O `POST` vai para o nosso próprio domínio (`/_tt/event`), e o Worker
 repassa ao TikTok.
 
+É **uma tag só**, que decide sozinha quais eventos mandar lendo o `lead=true` da URL:
+
+| Página | O que a tag envia |
+|---|---|
+| `p1` **sem** `lead=true` (landing) | `ViewContent` |
+| `p1` **com** `lead=true` (envio do lead) | `ViewContent` + `CompleteRegistration` + `Purchase` |
+
+Só o `ViewContent` leva `content_id` — a lista `CONTENT_EVENTS` no topo da tag define isso.
+As propriedades são **clonadas por evento**: um objeto compartilhado vazaria o `content_id` para
+`Purchase` e `CompleteRegistration`, que não o têm do lado do pixel.
+
+O `ViewContent` sai nas duas porque a tag de pixel dele também dispara nas duas. **As duas vias têm
+de enviar o mesmo conjunto**: o evento que o pixel manda e a Events API não fica sem par
+server-side, e perde a redundância que o quinto item da auditoria pede.
+
+Uma tag e não três porque seriam três cópias do mesmo bloco de sessenta linhas, editadas à mão no
+painel. Qualquer correção — um guard, o endpoint, um campo novo no payload — teria de ser aplicada
+três vezes, e é questão de tempo até uma das cópias ficar para trás. **Foi exatamente assim que
+nove tags acabaram mandando o cookie errado no campo do e-mail.**
+
+O laço manda um `POST` por evento, cada um dentro do seu `try`: um payload problemático não impede
+os outros de sair.
+
 ```html
 <script>
   (function () {
+    // ---------------------------------------------------------------------
+    // UMA tag para os tres eventos. Ela mesma decide quais mandar, pela URL:
+    //   toda p1            -> ViewContent
+    //   p1 com lead=true   -> ViewContent + CompleteRegistration + Purchase
+    // O ViewContent sai nas duas porque a tag de pixel dele tambem dispara nas
+    // duas. As duas vias tem de mandar o MESMO conjunto: o que o pixel manda e a
+    // Events API nao, fica sem par server-side.
+    // Os nomes tem de ser IDENTICOS ao campo Event das tags de pixel: o TikTok
+    // deduplica por (evento, event_id), entao divergir faz o par nao casar.
+    var ALWAYS_EVENTS = ['ViewContent'];
+    var LEAD_EVENTS   = ['CompleteRegistration', 'Purchase'];
+
+    // Eventos que levam content_id. Acrescentar um nome aqui e tudo que e preciso
+    // para estender -- mas o campo tem de ser preenchido na tag de PIXEL do mesmo
+    // evento tambem, senao as duas vias mandam propriedades diferentes.
+    var CONTENT_EVENTS = ['ViewContent'];
+    // O TikTok so aceita 'product' ou 'product_group', e exige content_type junto
+    // com content_id. Nossa landing e um item unico, entao 'product'.
+    var CONTENT_TYPE   = 'product';
+    // ---------------------------------------------------------------------
+
     // Preencher com o codigo do Test Events APENAS durante a validacao, e ESVAZIAR depois:
     // com valor preenchido, o evento vai para o fluxo de teste e NAO conta na atribuicao.
     var TEST_EVENT_CODE = '';
@@ -471,6 +626,7 @@ repassa ao TikTok.
     var currency = '{{TT - Lead Currency}}';
     var ttp      = '{{TT - TTP Cookie}}';
     var ttclid   = '{{TT - TTCLID}}';
+    var contentId = '{{TT - Content ID}}';
 
     // Substituicao textual do GTM: variavel vazia vira a string 'undefined'.
     function ok(v) {
@@ -480,67 +636,182 @@ repassa ao TikTok.
     if (!/^[A-Za-z0-9]{15,30}$/.test(pixel)) return;
     if (!/^tt_[a-z0-9]+_[a-z0-9]+$/.test(eventId)) return;
 
+    // A MESMA condicao do gatilho das tags de pixel do lead. Se um dia o gatilho
+    // mudar de criterio, esta linha tem de mudar junto.
+    var isLead = /[?&]lead=true/.test(location.search);
+    var events = isLead ? ALWAYS_EVENTS.concat(LEAD_EVENTS) : ALWAYS_EVENTS;
+
     var user = {};
     if (/^[a-f0-9]{64}$/.test(hash)) user.email = hash; // ja hasheado; o Worker repassa
     if (ok(ttp)) user.ttp = ttp;                        // identificadores: em claro
     if (ok(ttclid)) user.ttclid = ttclid;
 
-    var props = {};
+    var baseProps = {};
     var v = parseFloat(value);
-    if (!isNaN(v)) props.value = v;                     // numero, nunca string
-    if (/^[A-Z]{3}$/.test(currency)) props.currency = currency;
+    if (!isNaN(v)) baseProps.value = v;                 // numero, nunca string
+    if (/^[A-Z]{3}$/.test(currency)) baseProps.currency = currency;
 
-    var body = {
-      pixel_id: pixel,
-      event: 'Purchase',
-      event_id: eventId,
-      timestamp: Date.now(),
-      page: { url: location.href },
-      user: user,
-      properties: props
-    };
-    if (document.referrer) body.page.referrer = document.referrer;
-    if (ok(TEST_EVENT_CODE)) body.test_event_code = TEST_EVENT_CODE;
+    // Mesma lista que o Worker aceita. Um nome fora dela volta 400 e o .catch()
+    // engoliria o erro -- o evento sumiria sem sintoma.
+    var ALLOWED_EVENTS = ['Purchase', 'CompleteRegistration', 'ViewContent', 'Pageview', 'Lead'];
 
-    // Same-origin de proposito: sem preflight, sem CORS, e o cookie cf_clearance
-    // viaja (a regra WAF "WINDOWS BOT" da zona avalia antes do Worker).
-    // keepalive: a p1 costuma navegar logo em seguida, e sem isso o browser aborta
-    // a requisicao no unload e o evento se perde.
-    fetch('/_tt/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      keepalive: true
-    }).catch(function () {});
+    for (var i = 0; i < events.length; i++) {
+      // try por evento: um payload problematico nao pode impedir os outros de sair.
+      try {
+        var eventName = events[i];
+        if (ALLOWED_EVENTS.indexOf(eventName) === -1) continue;
+
+        // Copia por evento: content_id vale so para alguns, e um objeto
+        // compartilhado vazaria o campo para os demais.
+        var props = {};
+        for (var k in baseProps) {
+          if (Object.prototype.hasOwnProperty.call(baseProps, k)) props[k] = baseProps[k];
+        }
+        if (CONTENT_EVENTS.indexOf(eventName) !== -1 && ok(contentId)) {
+          props.content_id = contentId;
+          props.content_type = CONTENT_TYPE;
+        }
+
+        var body = {
+          pixel_id: pixel,
+          event: eventName,
+          event_id: eventId,
+          timestamp: Date.now(),
+          page: { url: location.href },
+          user: user,
+          properties: props
+        };
+        if (document.referrer) body.page.referrer = document.referrer;
+        if (ok(TEST_EVENT_CODE)) body.test_event_code = TEST_EVENT_CODE;
+
+        // Same-origin de proposito: sem preflight, sem CORS, e o cookie cf_clearance
+        // viaja (a regra WAF "WINDOWS BOT" da zona avalia antes do Worker).
+        // keepalive: a p1 costuma navegar logo em seguida, e sem isso o browser aborta
+        // a requisicao no unload e o evento se perde.
+        fetch('/_tt/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          keepalive: true
+        }).catch(function () {});
+      } catch (e) {}
+    }
   })();
 </script>
 ```
 
-O `keepalive` é o que permite a requisição sobreviver à saída da página — sem ele, conversões
-que redirecionam perdem o evento.
+O `keepalive` é o que permite a requisição sobreviver à saída da página — sem ele, conversões que
+redirecionam perdem o evento.
+
+:::atencao O lado do pixel continua sendo uma tag por evento
+Lá não dá para unificar: o template oficial do TikTok manda **um** evento por tag. Então são três
+tags de pixel e uma da Events API — a assimetria é da ferramenta, não do desenho.
+:::
+
+:::perigo A condição `lead=true` aparece em dois lugares e precisa concordar
+O gatilho das tags de pixel do lead usa `lead=true`, e esta tag repete a mesma condição no código
+para decidir o que enviar. Se um dia o critério de conversão mudar, **os dois têm de mudar
+juntos** — senão as duas vias passam a mandar conjuntos diferentes na mesma pageview, e o que
+sobrar de um lado só fica sem par.
+:::
+
+:::atencao O Worker não precisa de mudança para os eventos novos
+Ele já aceita `Purchase`, `CompleteRegistration`, `ViewContent`, `Pageview` e `Lead`. Um nome fora
+dessa lista volta **400**, e o `.catch()` da tag engole o erro — o evento sumiria sem sintoma. Por
+isso a tag valida o nome antes de enviar, em vez de deixar o Worker recusar.
+:::
+
+### O gatilho da tag da Events API
+
+É o mesmo gatilho **p1** usado pelo `ViewContent` do pixel. Ele não filtra `lead=true`: cobre a
+landing **e** a conversão, e deixa a decisão de quais eventos enviar para o código.
+
+```
+Page Path    contém   /<país>-
+Page Path    contém   -p1
+Page URL     contém   utm_source=tiktok
+```
+
+:::perigo Não reaproveite o gatilho do código-base
+Existe no container um gatilho parecido, mas é ele que dispara a tag de **código-base** — e os
+filtros dele **não são os mesmos**: no piloto ele usa `p1/` e `utm source`, enquanto o **p1** usa
+`-p1` e `utm_source=tiktok`, para espelhar o gatilho de lead.
+
+Além de casar páginas ligeiramente diferentes, reaproveitá-lo criaria um acoplamento silencioso:
+qualquer ajuste feito nele por motivo de código-base passaria a mexer na Events API. Crie um
+gatilho próprio.
+:::
 
 ## Como validar
 
+Valide no **Preview do GTM**, antes de publicar: ele roda só no seu navegador e os eventos chegam
+de verdade no Test Events. Não é preciso publicar para testar.
+
 1. No painel do TikTok, abra **Test Events** e copie o código de teste.
-2. Preencha `TEST_EVENT_CODE` no topo da tag da Events API, publique e navegue por uma página de
-   conversão real do país.
-3. Confirme que chegam **dois `Purchase`** e que ambos trazem o **mesmo `event_id`**. Esse é o
-   teste que importa: é o único jeito de saber que a redundância não virou contagem dobrada.
-4. Confirme que o `Purchase` traz e-mail hasheado, `value` numérico puro e moeda em três letras.
-5. **Esvazie o `TEST_EVENT_CODE`** e publique de novo.
+2. Preencha `TEST_EVENT_CODE` no topo da tag da Events API.
+3. **Passe pelo quiz e informe o e-mail** no mesmo navegador. Sem isso a variável
+   `User Email SHA256` vem vazia e os eventos saem sem PII — parece bug e não é.
+4. Percorra os dois cenários abaixo.
+5. **Esvazie o `TEST_EVENT_CODE`** e só então publique.
+
+### Cenário 1 — landing, sem `lead=true`
+
+| | |
+|---|---|
+| **Dispara** | código-base, `ViewContent` (pixel), `Events API` |
+| **Não dispara** | `Identify`, `CompleteRegistration`, `Purchase` |
+| **Test Events** | `Pageview` + `ViewContent` **duas vezes**, mesmo `event_id` |
+| **Network** | **1** `POST /_tt/event` → 200 |
+
+As duas cópias do `ViewContent` têm de trazer `content_id` igual ao slug da página e
+`content_type: product`. Se aparecer numa via e não na outra, as propriedades divergiram entre
+browser e servidor.
+
+O `ViewContent` daqui sai sem e-mail: o usuário ainda não deu o dele.
+
+### Cenário 2 — conversão, com `lead=true`
+
+| | |
+|---|---|
+| **Dispara** | código-base, `Identify`, `ViewContent`, `CompleteRegistration`, `Purchase`, `Events API` |
+| **Test Events** | `ViewContent`, `CompleteRegistration` e `Purchase`, **cada um duas vezes**, os seis com o **mesmo `event_id`** |
+| **Network** | **3** `POST /_tt/event` → 200 |
+
+Cada evento chegando **duas vezes com o mesmo `event_id`** é o teste que importa: é o único jeito
+de saber que a redundância não virou contagem dobrada. Confirme também que o `Purchase` traz e-mail
+hasheado, `value` numérico puro e moeda em três letras.
+
+E confira o caso negativo do `content_id`: ele tem de aparecer **só no `ViewContent`**. Se vazar
+para `Purchase` ou `CompleteRegistration`, as propriedades estão sendo compartilhadas entre os
+eventos em vez de clonadas — e aí as duas vias divergem, porque do lado do pixel esses dois não
+têm o campo.
+
+Nas Variables do Preview, confira os valores resolvidos — não basta a tag ter disparado:
+`TT - Pixel Code Map`, `TT - Event ID` (`tt_...`), `TT - Lead Value`, `TT - Lead Currency`,
+`TT - Content ID` (o slug da página) e `User Email SHA256` com 64 caracteres hex.
 
 :::perigo Esquecer de esvaziar o código de teste custa conversão
 Com ele preenchido, o evento vai para o fluxo de teste e **não conta na atribuição**. Não aparece
 erro em lugar nenhum — a campanha simplesmente para de receber sinal.
 :::
 
-Depois de 24 a 48 horas, leia os quatro indicadores na visão de qualidade do pixel. O Test Events
-mostra evento individual em tempo real; os indicadores da auditoria são **métricas agregadas** e
-ficam em outro lugar do painel.
+:::atencao Erros de rota aparecem no Network, não no GTM
+O `POST` tem um `.catch()` vazio, então falha em silêncio. **403** é regra de WAF barrando antes do
+Worker; **404** costuma ser a rota da Cloudflare sem o `/*` final.
+:::
 
-E acompanhe o volume de `Purchase` por dia na virada: ele deve ficar **estável**. Se dobrar, a
-regra do Events Builder não saiu (passo 5). Se cair, o gatilho está mais estreito que a regra
-antiga (passo 2).
+### Depois de publicar
+
+Leia os indicadores na visão de qualidade do pixel só depois de **24 a 48 horas** — o Test Events
+mostra evento individual em tempo real, e os quatro indicadores da auditoria são métricas agregadas,
+em outro lugar do painel.
+
+Acompanhe o volume por dia na virada:
+
+- `Purchase` e `CompleteRegistration` **estáveis**. Se dobrar, a regra do Events Builder não saiu
+  (passo 5). Se cair, o gatilho ficou mais estreito que a regra antiga (passo 2).
+- `ViewContent` **acima** dos outros dois — é o degrau do funil. Se vier igual, o gatilho dele não
+  é o **p1**.
 
 ## Onde cada conta está hoje
 
@@ -567,9 +838,9 @@ painel antes de começar por `uk.cc` ou `jp.cc`.
 
 ## Pendências
 
-Duas questões levantadas ao fechar a primeira fase com PH rodando. Nenhuma delas invalida o que
-está no ar. A primeira já tem desenho decidido e espera o momento de aplicar; a segunda ainda
-precisa de diagnóstico confirmado.
+Questões levantadas ao fechar a primeira fase com PH rodando. Nenhuma delas invalida o que
+está no ar. A primeira já tem desenho decidido e espera o momento de aplicar; as outras duas
+aguardam decisão ou diagnóstico confirmado.
 
 ### 1. Um país com mais de um pixel — desenho decidido, ainda não aplicado
 
@@ -625,7 +896,22 @@ Fica em aberto se `value` e `currency` devem passar a variar por vertical. Cart�
 não têm o mesmo RPM, então o `0.8` único provavelmente não serve para os dois — mas isso é
 calibração de negócio, não limitação técnica.
 
-### 2. Cobertura de cookie first-party: 43% no servidor, 98% no browser
+### 2. `value` e `currency` nos eventos de topo de funil — a decidir
+
+As três tags de conversão mandam `value: 0.8` e `currency: BRL`, inclusive o `ViewContent`. Foi
+assim que os eventos novos nasceram, copiados da tag de `Purchase`, e as duas vias (pixel e
+Events API) estão consistentes entre si.
+
+Fica a decidir se `ViewContent` deve mesmo carregar valor de compra. Não afeta o ROAS de
+`Purchase` — o TikTok calcula por evento —, mas infla qualquer métrica que some valor entre
+eventos e faz um evento de topo de funil parecer receita.
+
+:::atencao Se mudar, mude nos dois lados juntos
+A tag de pixel e a da Events API precisam mandar os mesmos `value` e `currency`. Alterar só uma
+das vias cria divergência entre o que o browser e o servidor reportam para a mesma conversão.
+:::
+
+### 3. Cobertura de cookie first-party: 43% no servidor, 98% no browser
 
 O painel do TikTok reporta, nas chaves de deduplicação:
 
