@@ -8,7 +8,7 @@ audience: Operação
 summary: A auditoria do TikTok apontou quatro indicadores em 0% porque a conversão não passava por tag nossa. Esta página ensina o que o piloto das Filipinas fez para resolver e como repetir isso em outro país.
 owner: tech-utua
 status: stable
-updated: 2026-09-02
+updated: 2026-09-07
 publish: true
 ---
 
@@ -16,7 +16,7 @@ publish: true
 
 # TikTok — replicar a qualidade de sinal para outros países
 
-> Como levar aos demais países o que o piloto das Filipinas já entregou: conversão saindo do
+> Como levar aos demais países o que Filipinas e Estados Unidos já rodam: conversão saindo do
 > GTM com e-mail, valor e moeda, mais uma cópia server-side. Siga na ordem — o passo 5 é o que
 > evita contar conversão dobrada.
 
@@ -114,20 +114,28 @@ por ele no fim — os demais passos seguem em paralelo.
 As variáveis são tabelas indexadas pelo código do país, então na maioria dos casos **não se cria
 tag nova** — acrescenta-se uma linha em cada uma:
 
-| Variável | Exemplo (Filipinas) |
-|---|---|
-| `TT - Pixel Code Map` | `ph` → `D8K2JMBC77UDG683OTH0` |
-| `TT - Lead Value` | `ph` → `0.8` |
-| `TT - Lead Currency` | `ph` → `BRL` |
+| Variável | Filipinas | Estados Unidos |
+|---|---|---|
+| `TT - Pixel Code Map` | `ph` → `D8K2JMBC77UDG683OTH0` | `usa` → `CUR4JC3C77U38KO2EUUG` |
+| `TT - Lead Value` | `ph` → `0.8` | `usa` → `7` |
+| `TT - Lead Currency` | `ph` → `BRL` | — (cai no padrão) |
 
-É esse desenho que faz uma tag servir todos os países. Se você se pegar clonando tags por país,
-provavelmente falta uma linha numa tabela.
+É esse desenho que faz **uma** tag servir todos os países — inclusive a de código-base, que lê a
+mesma `TT - Pixel Code Map`. Se você se pegar clonando tags por país, falta linha numa tabela.
 
-:::atencao A moeda é BRL de propósito, mesmo em conta de outro país
-Decisão do time: rodar tudo em `BRL` para os números ficarem comparáveis entre países. O TikTok
-converte para a moeda da conta ao reportar. A variável existe justamente para permitir mudar
-isso depois sem mexer em tag.
+:::atencao A moeda é BRL para todo mundo, e por isso a tabela tem padrão
+Decisão do time: rodar tudo em `BRL` para os números ficarem comparáveis entre países — valores
+abrasileirados, mesmo em conta de outro país. O TikTok converte para a moeda da conta ao reportar.
+
+Por isso `TT - Lead Currency` tem **valor padrão `BRL`**: país sem linha herda a política em vez
+de ficar sem moeda. A tabela existe para permitir abrir exceção depois, sem mexer em tag.
+
+⚠️ Não confunda com a `TT - Lead Value`, que **não** tem padrão. País sem linha ali não resolve o
+valor — e isso é proposital, porque valor é dado por país, não política.
 :::
+
+O valor varia por país (`0.8` nas Filipinas, `7` nos EUA, ambos em BRL). Combine o número com quem
+cuida da monetização antes de cadastrar — não há default para copiar.
 
 ### 2. Crie os dois gatilhos do país
 
@@ -160,18 +168,32 @@ página de conversão casa o **lead** mas não o **p1**. O `ViewContent` sumiria
 conversão acontece, e o `Purchase` do server-side junto, já que os dois dependem do **p1**.
 :::
 
-### 3. Clone as cinco tags do piloto
+### 3. Aponte os dois gatilhos para as tags que já existem
+
+:::atencao Normalmente não se cria tag nenhuma
+As seis tags já servem todos os países, porque todas tiram o pixel da `TT - Pixel Code Map`.
+Replicar é acrescentar os **gatilhos do país** às tags existentes, não clonar tags.
 
 | Tag | Gatilho | O que é |
 |---|---|---|
+| `Config - Acionador tiktok ads` | **p1** | carrega o pixel do país e dispara o `Pageview` |
 | `Identify` | lead | anexa a identidade ao pixel |
 | `ViewContent` (pixel) | **p1** | evento de topo, com `content_id` |
 | `CompleteRegistration` (pixel) | lead | evento de meio |
 | `Purchase` (pixel) | lead | conversão |
 | `Events API` | **p1** | cópia server-side dos **três** eventos |
+:::
 
 O código de cada uma está mais abaixo. Três tags do lado do pixel porque o template oficial manda
 um evento por tag; uma só do lado da Events API, que é código nosso e decide sozinha.
+
+:::perigo O código-base é genérico — não crie um por país
+A tag de código-base faz `ttq.load({{TT - Pixel Code Map}})`, então **um pixel errado na tabela
+carrega o pixel errado na página inteira**, e todos os eventos vão junto para a conta errada.
+
+O container ainda tem 24 tags de código-base antigas, uma por pixel, dos países que não migraram.
+Não use nenhuma delas como modelo: a versão certa é a que lê a Lookup.
+:::
 
 :::atencao O `content_id` do `ViewContent` no template do pixel
 Ele não aparece por padrão. Em *Manually Input Single / Multiple Products*, escolha
@@ -815,22 +837,27 @@ Acompanhe o volume por dia na virada:
 
 ## Onde cada conta está hoje
 
-As cinco contas auditadas **não incluem as Filipinas** — o piloto foi canário de propósito. A
-reauditoria vai medir estas cinco, então pedir nova auditoria antes de o rollout alcançá-las não
-muda indicador nenhum.
+Duas superfícies já rodam o desenho desta página:
+
+| País | Pixel | Desde | Estado |
+|---|---|---|---|
+| Filipinas | `D8K2JMBC77UDG683OTH0` | 20/08/2026 | os 5 itens da auditoria fechados |
+| Estados Unidos | `CUR4JC3C77U38KO2EUUG` | 04/09/2026 | mesma configuração, `value` = 7 |
+
+As demais contas auditadas continuam no desenho antigo:
 
 | Conta auditada | Superfície | Container | Situação |
 |---|---|---|---|
+| `[NX]us.cc.utua.com.br` | `utua.com.br` | `GTM-T48CH8D` | ✅ migrada |
 | `[NX]br.emp.utua.com.br` | `utua.com.br` | `GTM-T48CH8D` | tag existe, mas manda o cookie errado no campo do e-mail |
-| `[NX]us.cc.utua.com.br` | `utua.com.br` | `GTM-T48CH8D` | mesma situação |
 | `[NX]mx.emp.utua.com.br` | `utua.com.br` | `GTM-T48CH8D` | tags **pausadas** |
 | `[NX]uk.cc.utua.uk` | `utua.uk` | `GTM-M4B8JVS9` | container **sem nenhuma** tag do TikTok |
 | `[NX]jp.cc.utua.com` | `utua.com` | `GTM-5PW5333V` | container **sem nenhuma** tag do TikTok |
 
-:::atencao Por onde começar
-Nove tags já existem, já estão ativas e já mandam e-mail — só mandam o **valor errado** (um
-cookie que não é o SHA-256). Trocar a variável nelas fecha os itens 1 e 2 em BR, USA, ZA, PE, JP
-e TR **sem criar tag nenhuma**. É o caminho mais curto até as contas que a auditoria mediu.
+:::atencao Por onde continuar
+Oito tags ainda mandam o **valor errado** no campo do e-mail — um cookie que não é o SHA-256.
+Trocar a variável nelas fecha os itens 1 e 2 em BR, ZA, PE, JP e TR **sem criar tag nenhuma**, e é
+o caminho mais curto até as contas que a auditoria mediu.
 
 O mapeamento de conta para container acima veio do **nome da conta**, não de medição. Confirme no
 painel antes de começar por `uk.cc` ou `jp.cc`.
@@ -842,59 +869,49 @@ Questões levantadas ao fechar a primeira fase com PH rodando. Nenhuma delas inv
 está no ar. A primeira já tem desenho decidido e espera o momento de aplicar; as outras duas
 aguardam decisão ou diagnóstico confirmado.
 
-### 1. Um país com mais de um pixel — desenho decidido, ainda não aplicado
+### 1. Um país com mais de um pixel — falta só rechavear a Lookup
 
 A conta de anúncios costuma ser por **vertical**: um pixel para cartão (`cc`) e outro para
-empréstimo (`emp`). O desenho atual não expressa isso — `TT - Pixel Code Map` é indexada só pelo
-país, e a tag de código-base carrega um pixel com o ID escrito literalmente nela.
+empréstimo (`emp`). `TT - Pixel Code Map` é indexada só pelo país, então não expressa isso.
 
-Não é hipotético: no container, `br`, `usa`, `ar`, `co` e `ca` já aparecem com dois ou três
-pixels cada, e existem **26 tags de código-base para 26 pixels**.
+Não é hipotético: no container, `br`, `ar`, `co` e `ca` aparecem com dois ou três pixels cada.
 
-:::perigo Nos países multi-pixel, hoje os dois pixels carregam em toda página
-As duas tags de código-base de `br` compartilham o **mesmo acionador** (`p1/` + `/br-` +
-`tiktok`), e o mesmo vale para `usa`. Como o acionador olha só o país, ele não separa vertical:
-cada pixel recebe `Pageview` de cartão **e** de empréstimo.
+**A parte cara já foi resolvida.** O código-base virou uma tag genérica que faz
+`ttq.load({{TT - Pixel Code Map}})`, em vez de uma tag por pixel com o ID chumbado. Como ele lê a
+**mesma** tabela dos eventos, rechavear a tabela resolve as duas pontas de uma vez: o pixel que
+carrega e o pixel para onde os eventos vão.
 
-Se a intenção é um pixel por vertical, as duas contas estão medindo tráfego da outra. Isso é
-anterior a este trabalho e não afeta PH — que tem um pixel só —, mas **precisa ser corrigido
-antes de replicar para esses países**, ou o problema vira o normal.
+Sobra uma mudança só:
+
+| O quê | Como |
+|---|---|
+| `TT - Country Prefix` devolver `país-vertical` | trocar `return m[1]` por `m[1] + '-' + m[2]` — a regex `/^\/([a-z]{2,3})-(emp|cc)-/` **já captura** a vertical e descarta |
+| Rechavear `TT - Pixel Code Map` | `ph-emp`, `ph-cc`, `usa-cc`… em vez de `ph`, `usa` |
+
+:::perigo Rechavear a chave quebra as outras duas tabelas junto
+`TT - Lead Value` e `TT - Lead Currency` usam a **mesma** variável como entrada. Mudando a chave
+para `país-vertical`, as linhas `ph` e `usa` da tabela de valor deixam de casar — e como ela não
+tem padrão, o `value` some.
+
+Ou as três tabelas passam a ser chaveadas por `país-vertical` juntas, ou é preciso uma segunda
+variável só para o pixel. A primeira opção é mais simples e resolve a pergunta aberta do valor por
+vertical de quebra.
 :::
 
-**A solução são duas metades, cada uma no seu mecanismo:**
+**Por que ainda não foi aplicado:** nem PH nem os EUA têm mais de um pixel em uso hoje. A mudança
+entra quando o primeiro país multi-pixel entrar no fluxo.
 
-| Peça | Mecanismo | Resolve |
-|---|---|---|
-| Tag de código-base | **acionador por path** | qual pixel **carrega** na página |
-| `Identify`, `Purchase`, `Events API` | **Lookup chaveada por `país-vertical`** | para qual pixel o evento **vai** |
+:::atencao Nos países que ainda não migraram, os dois pixels carregam na mesma página
+As tags de código-base antigas de `br` compartilham o mesmo acionador (só o país), então cada
+pixel recebe `Pageview` de cartão **e** de empréstimo. Se a intenção é um pixel por vertical, as
+duas contas estão medindo tráfego da outra.
 
-O acionador por path aproveita que a URL sempre segue `/<país>-<vertical>-<produto>-<tipo>`:
-um acionador `contém /ph-emp-` para a tag do pixel de emprestimo, outro `contém /ph-cc-` para a
-de cartão. É o padrão que o container já usa — hoje o acionador só para no país, e passa a ir
-até a vertical.
-
-A segunda metade é barata: a variável de país **já captura** a vertical na regex
-`/^\/([a-z]{2,3})-(emp|cc)-/` e descarta o grupo 2. Devolvendo `país-vertical` (`ph-emp`), a
-Lookup do pixel passa a resolver por vertical. Sem isso, o pixel certo carregaria mas o
-`Purchase` continuaria indo para o único pixel que a tabela devolve para aquele país.
-
-:::atencao Use o hífen final no acionador
-`contém /ph-emp-`, não `/ph-emp`. Sem o hífen, uma vertical futura como `empresas` casaria os
-dois acionadores e carregaria dois pixels na mesma página. É a mesma classe do erro que deixou
-as `/ph-cc-` de fora.
+É anterior a este trabalho e some sozinho quando o país migrar para a tag genérica — mas se
+alguém ligar campanha nesses pixels antes disso, é o que vai medir.
 :::
 
-Foi descartado colapsar as 26 tags de base numa só que lesse a Lookup. Daria (a tag é Custom
-HTML, aceita variável), mas mexeria em 20 países de uma vez para economizar tags — enquanto
-dividir acionador é edição de gatilho, sem tocar em código que já funciona.
-
-**Por que ainda não foi aplicado:** PH tem um pixel só, servindo as duas verticais, então o
-problema não aparece aqui. A mudança entra quando o primeiro país multi-pixel — ou uma vertical
-nova — entrar no fluxo.
-
-Fica em aberto se `value` e `currency` devem passar a variar por vertical. Cartão e empréstimo
-não têm o mesmo RPM, então o `0.8` único provavelmente não serve para os dois — mas isso é
-calibração de negócio, não limitação técnica.
+Fica em aberto se o `value` deve variar por vertical. Cartão e empréstimo não têm o mesmo RPM,
+então um número único por país provavelmente não serve para os dois.
 
 ### 2. `value` e `currency` nos eventos de topo de funil — a decidir
 
